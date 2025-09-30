@@ -1,0 +1,97 @@
+states:
+  audio:
+    all:
+      - playing
+      - stopped
+    initial: stopped
+    auto_transitions:
+      playing:
+        after: 5
+        to: stopped
+
+  ignition:
+    all:
+      - ig_on
+      - ig_acc
+      - ig_off
+    initial: ig_off
+
+  media:
+    initial: NONE
+    all:
+      - NONE
+      - FM
+      - AM
+      - BT-A
+
+actions:
+  CAN_ACCON:
+    required:
+      all_of:
+        - ignition in [ig_off, ig_on]
+    transitions:
+      ignition: ig_acc
+    timeout: 10
+
+  CAN_IGON:
+    required:
+      all_of:
+        - ignition in [ig_off, ig_acc]
+    transitions:
+      ignition: ig_on
+    timeout: 10
+
+  CAN_IGOFF:
+    required:
+      all_of:
+        - ignition in [ig_on, ig_acc]
+    transitions:
+      ignition: ig_off
+      audio: stopped
+    timeout: 10
+
+  ADBFM:
+    required:
+      all_of:
+        - ignition in [ig_on, ig_acc]
+    transitions:
+      audio: playing
+      media: FM
+    timeout: 10
+
+  ADBAM:
+    required:
+      all_of:
+        - ignition in [ig_on, ig_acc]
+    transitions:
+      audio: playing
+      media: AM
+    timeout: 10
+
+  ADBBT-A:
+    required:
+      all_of:
+        - ignition in [ig_on, ig_acc]
+    transitions:
+      audio: playing
+      media: BT-A
+    timeout: 10
+
+  ADBAudioOFF:
+    required:
+      all_of:
+        - ignition in [ig_on, ig_acc]
+        - audio in [playing]
+    transitions:
+      audio: stopped
+      media: NONE
+    timeout: 10
+
+  ADBBTAudioON:
+    required:
+      all_of:
+        - audio in [stopped, paused]
+    transitions:
+      audio: playing
+      media: NONE
+    timeout: 10
