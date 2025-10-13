@@ -28,7 +28,8 @@ actions:
   CAN_ACCON:
     required:
       all_of:
-        - ignition in [ig_off, ig_on]
+        ignition:
+          - condition: "in [ig_off, ig_on]"
     transitions:
       ignition: ig_acc
     timeout: 10
@@ -36,7 +37,8 @@ actions:
   CAN_IGON:
     required:
       all_of:
-        - ignition in [ig_off, ig_acc]
+        ignition:
+          - condition: "in [ig_off, ig_acc]"
     transitions:
       ignition: ig_on
     timeout: 10
@@ -44,16 +46,22 @@ actions:
   CAN_IGOFF:
     required:
       all_of:
-        - ignition in [ig_on, ig_acc]
+        ignition:
+          - condition: "in [ig_on, ig_acc]"
     transitions:
-      ignition: ig_off
+      ignition:
+        - condition: "in [ig_on]"
+          next: ig_off
+        - condition: else
+          next: ig_off
       audio: stopped
     timeout: 10
 
   ADBFM:
     required:
       all_of:
-        - ignition in [ig_on, ig_acc]
+        ignition:
+          - condition: "in [ig_on, ig_acc]"
     transitions:
       audio: playing
       media: FM
@@ -62,7 +70,8 @@ actions:
   ADBAM:
     required:
       all_of:
-        - ignition in [ig_on, ig_acc]
+        ignition:
+          - condition: "in [ig_on, ig_acc]"
     transitions:
       audio: playing
       media: AM
@@ -71,7 +80,8 @@ actions:
   ADBBT-A:
     required:
       all_of:
-        - ignition in [ig_on, ig_acc]
+        ignition:
+          - condition: "in [ig_on, ig_acc]"
     transitions:
       audio: playing
       media: BT-A
@@ -80,8 +90,10 @@ actions:
   ADBAudioOFF:
     required:
       all_of:
-        - ignition in [ig_on, ig_acc]
-        - audio in [playing]
+        ignition:
+          - condition: "in [ig_on, ig_acc]"
+        audio:
+          - condition: "in [playing]"
     transitions:
       audio: stopped
       media: NONE
@@ -90,7 +102,8 @@ actions:
   ADBBTAudioON:
     required:
       all_of:
-        - audio in [stopped, paused]
+        audio:
+          - condition: "in [stopped, paused]"
     transitions:
       audio: playing
       media: NONE

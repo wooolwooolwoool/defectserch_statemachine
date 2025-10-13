@@ -2,10 +2,84 @@ import yaml
 import threading
 import time
 import re
+import ast
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from src.Config import Config
+
+def convert_str_to_list(str_value):
+    """ "[a,b,c]" -> ["a", "b", "c"] """
+    str_value = str_value.strip()
+    if str_value.startswith("[") and str_value.endswith("]"):
+        items = str_value[1:-1].split(",")
+        return [item.strip().strip('"').strip("'") for item in items]
+    else:
+        raise ValueError(f"リスト形式ではありません: {str_value}")
+
+def evaluate_condition(current_value, condition_str):
+    """シンプルなDSLを評価する"""
+    if condition_str == "else":
+        return True
+
+    if "not in " in condition_str:
+        _, rhs = condition_str.split("not in ")
+        try:
+            values = ast.literal_eval(rhs.strip())
+        except:
+            values = convert_str_to_list(rhs.strip())
+        return current_value not in values
+    elif "in " in condition_str:
+        _, rhs = condition_str.split("in ")
+        try:
+            values = ast.literal_eval(rhs.strip())
+        except:
+            values = convert_str_to_list(rhs.strip())
+        return current_value in values
+    elif "==" in condition_str:
+        lhs, rhs = condition_str.split("==")
+        return current_value == rhs.strip()
+    elif "!=" in condition_str:
+        lhs, rhs = condition_str.split("!=")
+        return current_value != rhs.strip()
+    else:
+        raise ValueError(f"Unknown condition: {condition_str}")
+
+def get_next_state(action_def, current_states):
+    """
+    action_def: YAMLを読み込んだ辞書
+    current_states: {"Audio": "Pause", "Display": "Stop", "Power": "Off"}
+    """
+    next_states = current_states.copy()
+    transitions = action_def.get("transitions", {})
+
+    for category, rules in transitions.items():
+        # Power: On のような書き方に対応
+        if isinstance(rules, str):
+            next_states[category] = rules
+            continue
+
+        matched = False
+        else_rule = None
+        for rule in rules:
+            cond = rule.get("condition")
+            next_value = rule["next"]
+
+            if cond == "else":
+                else_rule = next_value
+                continue
+
+            current_value = current_states.get(category)
+            if evaluate_condition(current_value, cond):
+                next_states[category] = next_value
+                matched = True
+                break
+
+        # どれにも一致しなかった場合 else を適用
+        if not matched and else_rule is not None:
+            next_states[category] = else_rule
+
+    return next_states
 
 # 仮の実機状態取得関数（実際はあなたのコードに差し替え）
 def get_actual_state(component):
@@ -38,39 +112,22 @@ class Context:
         self.logger("現在の状態:", self.state)
 
     def satisfies(self, conditions):
-        def parse_condition(cond_str):
-            m = re.match(r'(\w+)\s*(==|in)\s*(.+)', cond_str)
-            if not m:
-                raise ValueError(f"条件パース失敗: {cond_str}")
-            key, op, value = m.groups()
-            if op == "in":
-                # convert to [a, b] to ["a", "b"]
-                value = value.strip()
-                if value.startswith("[") and value.endswith("]"):
-                    items = value[1:-1].split(",")
-                    value = [item.strip().strip('"').strip("'") for item in items]
-                else:
-                    raise ValueError(f"in 演算子の値はリスト形式である必要があります: {value}")
-            elif op == "==":
-                value = value.strip().strip('"').strip("'")
-            return key.strip(), op, value
-
-        def check(cond_str):
-            key, op, value = parse_condition(cond_str)
-            current = self.get(key)
-            if op == "==":
-                return current == value
-            elif op == "in":
-                return current in value
+        def check(key, condition_strs, all_):
+            results = []
+            for condition_str in condition_strs:
+                current = self.get(key)
+                results.append(evaluate_condition(current, condition_str.get("condition")))
+            if all_:
+                return all(results)
             else:
-                raise ValueError(f"Unknown: {op}")
+                return any(results)
 
-        all_of = conditions.get("all_of", [])
-        any_of = conditions.get("any_of", [])
+        all_of = conditions.get("all_of", {})
+        any_of = conditions.get("any_of", {})
 
-        if all_of and not all(check(c) for c in all_of):
+        if all_of and not all(check(k, v, True) for k, v in all_of.items()):
             return False
-        if any_of and not any(check(c) for c in any_of):
+        if any_of and not any(check(k, v, False) for k, v in any_of.items()):
             return False
         return True
 
@@ -141,7 +198,9 @@ class StateMachine:
             return False
 
         self.logger(f"[OK] 操作 '{action}' 実行")
-        self.ctx.set(op_def.get("transitions", {}))
+        next_state = get_next_state(op_def, self.ctx.state)
+        print(f"Next State: {next_state}")
+        self.ctx.set(next_state)
         self.ctx.show()
         self.setup_auto_transitions()
         return True
