@@ -139,7 +139,7 @@ class StateMachine:
         self.states = self.config.states
         self.all_states = {name: defn.get("all", []) for name, defn in self.states.items()}
         self.actions = self.config.actions
-        self.ctx = Context({name: defn["initial"] for name, defn in self.states.items()})
+        self.init_state = self.ctx = Context({name: defn["initial"] for name, defn in self.states.items()})
         self.setup_auto_transitions()
 
     def logger(self, *args):
@@ -152,6 +152,9 @@ class StateMachine:
 
     def get_all_states(self):
         return self.all_states
+
+    def get_init_state(self):
+        return self.init_state.state
 
     def setup_auto_transitions(self):
         for component, defn in self.states.items():

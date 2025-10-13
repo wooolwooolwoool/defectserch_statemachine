@@ -67,6 +67,24 @@ class Explorer:
                 dst = self.sm.convert_state_to_str(expected_state)
                 node.edges[a] = GraphEdge(a, dst)
             # print(f"状態: {state}, 遷移可能アクション: {[e.action for e in node.edges.values()]}")
+        # init_state から到達可能なノードだけに絞る
+        init_state = self.sm.get_init_state()
+        init_name = self.sm.convert_state_to_str(init_state)
+        reachable = set()
+        to_visit = [init_name]
+        while to_visit:
+            current = to_visit.pop()
+            if current in reachable:
+                continue
+            reachable.add(current)
+            node = self.graph.get(current)
+            if node:
+                for edge in node.edges.values():
+                    if edge.dst not in reachable:
+                        to_visit.append(edge.dst)
+        self.graph = {name: node for name, node in self.graph.items() if name in reachable}
+        self.logger(f"Graph built with {len(self.graph)} nodes")
+
 
     def select_edge(self, node, method="random"):
         """エッジ選択メソッド"""
