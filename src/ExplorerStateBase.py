@@ -135,6 +135,31 @@ class Explorer:
         self.logger(f"state: {state}, path: {[e.action for e in path]}")
         return path
 
+    # StartとGoalを指定して幅有線探索で最短パスを返却
+    def find_shortest_path(self, start_state, goal_state):
+        start_name = self.sm.convert_state_to_str(start_state)
+        goal_name = self.sm.convert_state_to_str(goal_state)
+
+        from collections import deque
+        queue = deque()
+        queue.append((start_name, []))
+        visited = set()
+        visited.add(start_name)
+
+        while queue:
+            current_name, path = queue.popleft()
+            if current_name == goal_name:
+                return path
+
+            current_node = self.graph.get(current_name)
+            if current_node:
+                for edge in current_node.edges.values():
+                    if edge.dst not in visited:
+                        visited.add(edge.dst)
+                        queue.append((edge.dst, path + [edge]))
+        return None  # ゴールに到達できない場合
+
+
     def maybe_unfreeze(self):
         """探索が進んだら Freeze 解除も検討"""
         # 例: グラフ全体で100試行ごとに freeze_limit を +1

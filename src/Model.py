@@ -11,22 +11,47 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from src.Actor import MasterActor, DummyActor
 # from VolumeMonitor import VolumeMonitor
 from src.StateMachine import StateMachine
-from src.Monitor import Monitor, DummyMonitor
+from src.Monitor.Monitor import Monitor, DummyMonitor
 from src.Config import Config
 
+DEBUG = False
 
 class Model:
-    def __init__(self):
+    def __init__(self, custom_actor=[], custom_monitor=[]):
         self.total_bug_count = 0
         self.total_act_count = 0
         self.acts = []
         self.reset_acts = []
         self.state = []
         self.sm = StateMachine()
+        import pkgutil
+        import inspect
+
         self.actor = MasterActor()
-        self.monitor = Monitor()
+
+
+        self.monitor = {}
+        from src import Monitor as monitor_module
+        def is_monitor_subclass(obj):
+            return inspect.isclass(obj) and issubclass(obj, Monitor) and obj is not Monitor
+
+        monitors = [
+            cls() for _, name, _ in pkgutil.iter_modules(monitor_module.__path__)
+            for cls in vars(__import__(f"src.Monitor.{name}", fromlist=[""])).values()
+            if is_monitor_subclass(cls)
+        ] + [monitor() for monitor in custom_monitor]
+        for m in monitors:
+            self.monitor[m.category] = m
+
+        if DEBUG:
+            for cat in self.monitor.keys():
+                print(f"Monitor loaded: {cat} -> {self.monitor[cat].__class__.__name__}")
+            input(":")
         self.last_action = None
         self.config = Config()
+        self.bug_state = self.sm.get_all_states()
+        for k in self.bug_state.keys():
+            self.bug_state[k] = "ok"
 
     def get_acts(self):
         """実行可能な操作のリストを取得"""
@@ -82,7 +107,7 @@ class Model:
         initial_state = copy.deepcopy(self.sm.get_expected_state())
         while True:
             current_state = self.actor.get_current_state()
-            monitor_state = self.monitor.get_state()
+            monitor_state = self.monitor[category].get_state()
             # print(f"current_state={current_state} monitor_state={monitor_state}")
             if current_state != initial_state:
                 if category in monitor_state:
@@ -95,50 +120,37 @@ class Model:
                 return False
             time.sleep(0.1)
 
+    def wait_state_transition(self, timeout=10):
+        """状態遷移が起こるまで待つ（timeout 秒で打ち切り）"""
+        start_time = time.time()
+        initial_state = copy.deepcopy(self.sm.get_expected_state())
+        while True:
+            current_state = self.actor.get_current_state()
+            if current_state != initial_state:
+                return True
+            if time.time() - start_time > timeout:
+                print("wait_state_transition timeout")
+                return False
+            time.sleep(0.1)
 
-    def check_bug_triggered(self, categorys):
+    def check_bug_triggered(self, categories=[]):
         """バグが発生しているかチェック
-        @retval: True -> Bug
-        @retval: False -> not Bug
+        @retval:
+        {
+            audio: "ok"/"ng",
+            video: "ok"/"ng",
+            ...
+        }
         """
-        result = True
-        for c in categorys:
-            excepted_state = self.sm.get_expected_state()[c]
-            timeout = self.config.get_timeout(c)
-            # print(f"expected_state={excepted_state} timeout={timeout}")
-            result &= self.wait_state_transition(c, excepted_state[c], timeout)
-        return not result
-
-
-# class RealModel(Model):
-#     def __init__(self, snd_device=1, snd_threshold=0.2, snd_duration=1.0):
-#         super().__init__()
-#         self.monitor = VolumeMonitor(snd_device, snd_threshold, snd_duration)
-
-#     def perform_action(self, action):
-#         if action in self.acts:
-#             if self.sm.trigger(action):
-#                 self.actor.perform_action(action)
-#                 self.state.append(f"act:{action}")
-#                 self.total_act_count += 1
-#                 return True
-#             else:
-#                 print(f"{action} is not allowed!!")
-#                 return False
-#         else:
-#             print(f"{action} is not found!!")
-#             return False
-
-#     def wait(self, duration):
-#         time.sleep(duration)
-#         self.state.append(f"wait:{duration}")
-#         return True
-
-#     def check_bug_triggered(self):
-#         """バグが発生しているかチェック"""
-#         # TODO: 実際のVolumeMonitorでチェックする処理を追加
-#         pass
-
+        for cat in categories:
+            if cat in self.monitor:
+                expect = self.sm.get_expected_state().get(cat, None)
+                timeout = self.config.get_monitor_timeout(cat)
+                self.wait_state_transition(cat, expect, timeout)
+                self.bug_state[cat] = self.monitor[cat].check_bug_triggered()
+            else:
+                self.bug_state[cat] = "ok"
+        return self.bug_state
 
 class TestModel(Model):
     def __init__(self):
@@ -152,9 +164,6 @@ class TestModel(Model):
         self.total_act_count = 0
         self.checked = False
         self.bugs = []
-        self.bug_state = self.sm.get_all_states()
-        for k in self.bug_state.keys():
-            self.bug_state[k] = "ok"
         self.reset()
 
     def reset(self):
@@ -188,19 +197,6 @@ class TestModel(Model):
         if ret:
             self.hist.append(action)
         return ret
-
-    def wait_state_transition(self, timeout=10):
-        """状態遷移が起こるまで待つ（timeout 秒で打ち切り）"""
-        start_time = time.time()
-        initial_state = copy.deepcopy(self.sm.get_expected_state())
-        while True:
-            current_state = self.actor.get_current_state()
-            if current_state != initial_state:
-                return True
-            if time.time() - start_time > timeout:
-                print("wait_state_transition timeout")
-                return False
-            time.sleep(0.1)
 
     def wait(self, duration):
         # super().wait(duration) は実際にはsleepするので省略

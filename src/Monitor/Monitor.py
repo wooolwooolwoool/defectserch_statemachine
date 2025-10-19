@@ -8,6 +8,7 @@ from src.StateMachine import StateMachine
 
 class Monitor:
     def __init__(self):
+        self.category = ""
         self._check_state = {}
 
     def register_check_state(self, category, func):
@@ -30,6 +31,7 @@ class DummyMonitor(Monitor):
         operations: 実行可能な行動のリスト
         """
         super().__init__()
+        self.category = "dummy"
         self.current_state = {}
         # ダミー実装
         for cat in category:
